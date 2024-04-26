@@ -1,0 +1,155 @@
+﻿@page "/"
+@using System.ComponentModel.DataAnnotations
+@using System.Threading.Tasks
+@using Microsoft.JSInterop
+@inject IJSRuntime JSRuntime
+
+<br />
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-6">
+            <form>
+                <div class="form-container">
+                    <h2>Mortgage Calculator</h2>
+                    <br />
+                    <!-- Custom styling added to move the form to the left -->
+                    <div class="form-group">
+                        <label for="principal">Loan Amount (Principal)</label>
+                        <input id="principal" class="form-control" @bind="@mortgageData.Principal" placeholder="Enter loan amount" />
+                        @if (validationMessages.ContainsKey(nameof(mortgageData.Principal)))
+                        {
+                            <span class="text-danger">@validationMessages[nameof(mortgageData.Principal)][0]</span>
+                        }
+                    </div>
+                    <br />
+
+                    <div class="form-group">
+                        <label for="interestRate">Annual Interest Rate (%)</label>
+                        <input id="interestRate" class="form-control" @bind="@mortgageData.AnnualInterestRateAsString" placeholder="Enter annual interest rate" />
+                        @if (validationMessages.ContainsKey(nameof(mortgageData.AnnualInterestRateAsString)))
+                        {
+                            <span class="text-danger">@validationMessages[nameof(mortgageData.AnnualInterestRateAsString)][0]</span>
+                        }
+                    </div>
+                    <br />
+
+                    <div class="form-group">
+                        <label for="loanTerm">Loan Term (Years)</label>
+                        <input id="loanTerm" class="form-control" @bind="@mortgageData.LoanTermInYearsAsString" placeholder="Enter loan term" />
+                        @if (validationMessages.ContainsKey(nameof(mortgageData.LoanTermInYearsAsString)))
+                        {
+                            <span class="text-danger">@validationMessages[nameof(mortgageData.LoanTermInYearsAsString)][0]</span>
+                        }
+                    </div>
+
+                    <!-- Display the result inside the form -->
+                    @if (monthlyPayment.HasValue)
+                    {
+                        <div class="mt-3">
+                            <label style="font-weight: bold; color: #333;">Your Monthly Mortgage Payment is:</label>
+                            <span style="font-size: 18px; color: #007bff;">@monthlyPayment</span>
+                        </div>
+                    }
+                    <br />
+
+                    <button class="btn btn-primary" style="margin-right:10px;" @onclick:preventDefault="true" @onclick="CalculateMortgage">Calculate</button>
+
+                    <!-- Add Reset button -->
+                    <button class="btn btn-secondary ml-2 btn-danger" style="margin-right:10px;" @onclick:preventDefault="true" @onclick="ResetForm">Reset</button>
+
+                    <!-- Add Generate Report button -->
+                    <button class="btn btn-secondary ml-2 btn-success" @onclick:preventDefault="true" @onclick="GeneratePDF">Generate Report</button>
+
+
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div style="position: absolute; top: 120px; right: 140px;">
+    <img src="/Images/finance.png" class="index-img" alt="finance" style="width: 400px; height: 400px;">
+</div>
+
+
+@code {
+    private MortgageData mortgageData = new MortgageData();
+    private double? monthlyPayment;
+    private Dictionary<string, List<string>> validationMessages = new Dictionary<string, List<string>>();
+
+    private void CalculateMortgage()
+    {
+        var validationContext = new ValidationContext(mortgageData);
+        var validationResults = new List<ValidationResult>();
+
+        if (Validator.TryValidateObject(mortgageData, validationContext, validationResults, true))
+        {
+            validationMessages.Clear(); // Clear validation messages when validation passes
+
+            if (double.TryParse(mortgageData.Principal, out double principal) &&
+                double.TryParse(mortgageData.AnnualInterestRateAsString, out double annualInterestRate) &&
+                double.TryParse(mortgageData.LoanTermInYearsAsString, out double loanTermInYears))
+            {
+                // Convert annual interest rate to monthly interest rate
+                double monthlyInterestRate = annualInterestRate / 100 / 12;
+
+                // Calculate monthly mortgage payment using the formula
+                monthlyPayment = principal * (monthlyInterestRate * Math.Pow(1 + monthlyInterestRate, loanTermInYears * 12)) /
+                                 (Math.Pow(1 + monthlyInterestRate, loanTermInYears * 12) - 1);
+            }
+        }
+        else
+        {
+            validationMessages.Clear();
+            foreach (var validationResult in validationResults)
+            {
+                foreach (var memberName in validationResult.MemberNames)
+                {
+                    if (!validationMessages.ContainsKey(memberName))
+                    {
+                        validationMessages[memberName] = new List<string>();
+                    }
+                    validationMessages[memberName].Add(validationResult.ErrorMessage);
+                }
+            }
+        }
+    }
+
+    private void ResetForm()
+    {
+        // Clear input data
+        mortgageData.Principal = "";
+        mortgageData.AnnualInterestRateAsString = "";
+        mortgageData.LoanTermInYearsAsString = "";
+
+        // Clear validation messages
+        validationMessages.Clear();
+
+        // Clear result label
+        monthlyPayment = null;
+    }
+
+    private async Task GeneratePDF()
+    {
+        // Invoke the JavaScript function to generate PDF
+        await JSRuntime.InvokeVoidAsync("generatePDF");
+    }
+
+
+    public class MortgageData
+    {
+        [Required(ErrorMessage = "Loan amount is required.")]
+        [RegularExpression(@"^\d*\.?\d*$", ErrorMessage = "Please enter a valid number.")]
+        [Range(0, double.MaxValue, ErrorMessage = "Please enter a positive number.")]
+        public string Principal { get; set; }
+
+        [Required(ErrorMessage = "Annual interest rate is required.")]
+        [RegularExpression(@"^\d*\.?\d*$", ErrorMessage = "Please enter a valid number.")]
+        public string AnnualInterestRateAsString { get; set; }
+
+        [Required(ErrorMessage = "Loan term is required.")]
+        [RegularExpression(@"^\d*\.?\d*$", ErrorMessage = "Please enter a valid number.")]
+        [Range(0, double.MaxValue, ErrorMessage = "Please enter a positive number.")]
+        public string LoanTermInYearsAsString { get; set; }
+    }
+}
